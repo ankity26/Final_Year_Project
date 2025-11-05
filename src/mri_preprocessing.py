@@ -1,52 +1,45 @@
 import os
 import nibabel as nib
 import numpy as np
-import cv2
+from PIL import Image
 
-# Base directories
-RAW_DIR = "data/raw/"
-PROCESSED_DIR = "data/processed/"
-
-def preprocess_mri(file_path, output_dir=PROCESSED_DIR, target_size=(128, 128)):
+def process_mri_folder(input_dir, output_dir):
     """
-    Load .nii, .nii.gz, or .hdr/.img file, extract middle slice, normalize, resize, and save as .png
+    Converts MRI volumes (.hdr/.img or .nii) in input_dir into 2D PNG slices.
     """
-    try:
-        img = nib.load(file_path)
-        data = img.get_fdata()
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"🧠 Processing MRI files from: {input_dir}")
 
-        # Take middle slice along the z-axis
-        middle_slice = data[:, :, data.shape[2] // 2]
+    for file in os.listdir(input_dir):
+        if file.endswith(".hdr") or file.endswith(".nii") or file.endswith(".nii.gz"):
+            file_path = os.path.join(input_dir, file)
+            print(f"📂 Reading volume: {file_path}")
 
-        # Normalize intensity (0–255)
-        normalized = cv2.normalize(middle_slice, None, 0, 255, cv2.NORM_MINMAX)
-        normalized = normalized.astype(np.uint8)
+            # Load MRI volume
+            img = nib.load(file_path)
+            data = img.get_fdata()
 
-        # Resize to a standard size (128x128)
-        resized = cv2.resize(normalized, target_size)
+            # Normalize to 0–255
+            data = (data - np.min(data)) / (np.max(data) - np.min(data)) * 255.0
+            data = data.astype(np.uint8)
 
-        # Save as PNG
-        os.makedirs(output_dir, exist_ok=True)
-        file_name = os.path.basename(file_path).split('.')[0] + ".png"
-        output_path = os.path.join(output_dir, file_name)
-        cv2.imwrite(output_path, resized)
+            # Save middle slices (1 out of every 5)
+            middle_slices = range(data.shape[2] // 4, 3 * data.shape[2] // 4, 5)
+            base_name = os.path.splitext(file)[0]
 
-        print(f"✅ Processed: {file_name}")
-    except Exception as e:
-        print(f"❌ Error processing {file_path}: {e}")
+            for i in middle_slices:
+                slice_img = data[:, :, i]
 
+                # Ensure 2D
+                if slice_img.ndim > 2:
+                    slice_img = np.squeeze(slice_img)
 
-def process_all_mri(base_dir=RAW_DIR):
-    """
-    Recursively search all subfolders for MRI files (.nii, .nii.gz, .hdr)
-    """
-    for root, _, files in os.walk(base_dir):
-        for file in files:
-            if file.endswith((".nii", ".nii.gz", ".hdr")):
-                full_path = os.path.join(root, file)
-                preprocess_mri(full_path)
+                # Convert to grayscale image safely
+                im = Image.fromarray(slice_img).convert("L")
 
+                slice_path = os.path.join(output_dir, f"{base_name}_slice_{i}.png")
+                im.save(slice_path)
 
-if __name__ == "__main__":
-    os.makedirs(PROCESSED_DIR, exist_ok=True)
-    process_all_mri()
+            print(f"✅ Saved slices for {file}")
+
+    print(f"\n🎉 All files processed successfully! Output folder: {output_dir}")

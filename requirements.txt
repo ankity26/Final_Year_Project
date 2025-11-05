@@ -11,3 +11,10 @@ torchaudio
 transformers
 streamlit
 jupyter
+streamlit
+torch
+torchvision
+Pillow
+opencv-python
+
+
